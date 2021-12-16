@@ -1,0 +1,92 @@
+#!/bin/bash
+# minix 2.0.0 workaround installation on VM qemu 5.2.0
+# because there is an issue with RAM
+
+# WARNING
+# it's more a guide then an automated script
+# a manual usage recommended T_T
+
+# copy here ROOT USR USR.TAZ
+
+# make bootable floppy disk
+dd if=/dev/zero of=boot_disk bs=1K count=1440
+dd if=ROOT of=boot_disk conv=notrunc
+# make hdd 50MB for installation
+dd if=/dev/zero of=minix2.img bs=1M count=50
+# mount floppy and USR
+mkdir mp_root mp_usr mp_mnx
+sudo mount -o loop boot_disk mp_root
+sudo mount -o loop USR mp_usr
+
+# edit mp_root/etc/rc line 22 add 'sh'
+sudo vi mp_root/etc/rc
+
+# copy necesary programms
+sudo mkdir mp_root/usr/bin
+cd mp_usr/bin
+sudo cp -a ls mkfs installboot partition ../../mp_root/usr/bin/
+cd ..
+sudo cp -a mdec/ ../mp_root/usr/
+cd ..
+# unmount floppy disk
+sudo sync
+sudo umount mp_root
+
+# start VM
+qemu-system-i386 \
+-drive file=boot_disk,if=floppy,format=raw \
+-drive file=minix2.img,media=disk,format=raw \
+-boot menu=on -m 64 -cpu 486
+# on boot ESC | choose floppy
+# --- minix --- 
+# partition /dev/hd0 81:90000+*
+# mkfs /dev/hd1 [50000]
+# halt
+# --- end ---
+# stop VM
+
+# mount ROOT and hdd, something like /dev/loop2p1
+sudo mount -o loop ROOT mp_root
+LOOP_DEV=$(sudo losetup -f)
+sudo losetup -P $LOOP_DEV minix2.img
+sudo mount $LOOP_DEV'p1' mp_mnx
+# copy ROOT USR to hdd
+sudo cp -a mp_root/. mp_mnx/
+sudo cp -a mp_usr/. mp_mnx/usr/
+# unpack USR.TAZ to hdd
+cd mp_mnx/usr
+sudo tar -xzvf ../../USR.TAZ
+cd ../..
+ 
+# edit mp_mnx/etc/fstab 'root=/dev/hd1'
+sudo vi mp_mnx/etc/fstab
+
+# unmount
+sudo sync
+sudo umount mp_root mp_usr mp_mnx
+sudo losetup -d $LOOP_DEV
+
+# start VM
+qemu-system-i386 \
+-drive file=boot_disk,if=floppy,format=raw \
+-drive file=minix2.img,media=disk,format=raw \
+-boot menu=on -m 64 -cpu 486
+# ESC choose floppy
+# --- minix ---
+# installboot -m /dev/hd0 /usr/mdec/masterboot
+# installboot -d /dev/hd1 /usr/mdec/bootblock boot
+# reboot
+# --- end ---
+# ESC now choose ata0
+# in bootloader ESC
+# rootdev=hd1
+# save
+# boot
+# --- minix ---
+# login root | ^_^ | halt
+# --- end ---
+# stop VM
+
+# remove tmp files
+rmdir mp_root mp_usr mp_mnx
+sudo rm ROOT USR USR.TAZ
